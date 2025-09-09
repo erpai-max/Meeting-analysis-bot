@@ -25,19 +25,15 @@ def get_id_from_url(url):
     return url.split('/')[-1].split('?')[0]
 
 TEAM_FOLDERS = {
-    "Sharath": get_id_from_url(""),
-    "Tavish": get_id_from_url(""),
-    "Sripal": get_id_from_url(""),
-    "Musthafa": get_id_from_url(""),
+    "Sharath": get_id_from_url("https://drive.google.com/drive/folders/1Ddvswz50pgniX3WTQdV-gd2wEz56di5H?usp=sharing"),
+    "Tavish": get_id_from_url("https://drive.google.com/drive/folders/1ug6CVE96qLJNfmwLdC631Zz5KSyVO9FK?usp=sharing"),
+    "Sripal": get_id_from_url("https://drive.google.com/drive/folders/19F77ZKyCQgEb43HidnmFMrPxT9Z6NqcW?usp=sharing"),
+    "Musthafa": get_id_from_url("https://drive.google.com/drive/folders/1kwg9bnZq_CgKE0YKXfDqnMvJHVz7VI3e?usp=sharing"),
     "Hemanth": get_id_from_url("https://drive.google.com/drive/folders/148aNehlAkHFL_gpX73Ko61ftg0XgE_ye?usp=sharing"),
-    "Luqman": get_id_from_url(""),
-    "Darshan": get_id_from_url(""),
-    "Yash": get_id_from_url(""),
-    "Aditya": get_id_from_url(""),
-    "Vishal": get_id_from_url(""),
-    "Rahul": get_id_from_url(""),
-    "Akshay": get_id_from_url(""),
-    "Saleem": get_id_from_url("")
+    "Darshan": get_id_from_url("https://drive.google.com/drive/folders/1BciBnzjxbeCnPlPsTCVVhv1NH2BxmIGl?usp=sharing"),
+    "Vishal": get_id_from_url("https://drive.google.com/drive/folders/1ZFE5sAVMOlJcHC5r3LEVZzbEnZzOvY-G?usp=sharing"),
+    "Rahul": get_id_from_url("https://drive.google.com/drive/folders/1kxThyuSLuMUmM3GFF4H7PcVx8yUzasix?usp=sharing"),
+    "Akshay": get_id_from_url("https://drive.google.com/drive/folders/13gXYRgpi4xzhLMWppa8ZI2Ljr_wZHAQF?usp=sharing")
 }
 
 # Set up logging
@@ -209,11 +205,15 @@ def write_to_google_sheets(gsheets_client, data):
         worksheet = spreadsheet.get_worksheet(0)
         
         headers = worksheet.row_values(1)
+        # If the sheet is empty, create the headers first
         if not headers:
             logging.warning("No headers found in the Google Sheet. Writing data keys as headers first.")
-            headers = list(data.keys())
-            worksheet.append_row(headers, value_input_option="USER_ENTERED")
+            # Create a list of all 47 expected keys from your prompt
+            header_keys = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
+            worksheet.append_row(header_keys, value_input_option="USER_ENTERED")
+            headers = header_keys # Use the newly created headers
 
+        # Create the row of values in the correct order based on the headers
         row_to_insert = [data.get(header, "N/A") for header in headers]
         
         worksheet.append_row(row_to_insert, value_input_option="USER_ENTERED")
