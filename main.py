@@ -4,6 +4,8 @@ import json
 import tempfile
 import logging
 import time
+from typing import Dict, Tuple, Optional, Iterable
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -13,16 +15,16 @@ import gspread
 # --- Dependencies ---
 from faster_whisper import WhisperModel
 
-# --- Configuration ---
+# =======================
+# Configuration
+# =======================
 GCP_SERVICE_ACCOUNT_KEY = os.environ.get("GCP_SA_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# !!! IMPORTANT: VERIFY THESE IDs ARE CORRECT !!!
 GOOGLE_SHEET_ID = "12vuVG0jTs5GUFaywj3piz6zk44X92JeB"
 PROCESSED_FOLDER_ID = "1fI7QAr1MwJlh4FTJGezb5LTXGDqMpmXT"
 
-# --- Helper Function ---
-def get_id_from_url(url):
+def get_id_from_url(url: str) -> str:
     return url.split('/')[-1].split('?')[0]
 
 TEAM_FOLDERS = {
@@ -34,40 +36,56 @@ TEAM_FOLDERS = {
     "Darshan": get_id_from_url("https://drive.google.com/drive/folders/1BciBnzjxbeCnPlPsTCVVhv1NH2BxmIGl?usp=sharing"),
     "Vishal": get_id_from_url("https://drive.google.com/drive/folders/1ZFE5sAVMOlJcHC5r3LEVZzbEnZzOvY-G?usp=sharing"),
     "Rahul": get_id_from_url("https://drive.google.com/drive/folders/1kxThyuSLuMUmM3GFF4H7PcVx8yUzasix?usp=sharing"),
-    "Akshay": get_id_from_url("https://drive.google.com/drive/folders/13gXYRgpi4xzhLMWppa8ZI2Ljr_wZHAQF?usp=sharing")
+    "Akshay": get_id_from_url("https://drive.google.com/drive/folders/13gXYRgpi4xzhLMWppa8ZI2Ljr_wZHAQF?usp=sharing"),
 }
 
-# Set up logging
+# =======================
+# Logging
+# =======================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- FUNCTION DEFINITIONS ---
-
-def authenticate_google_services():
+# =======================
+# Auth
+# =======================
+def authenticate_google_services() -> Tuple[Optional[object], Optional[gspread.Client]]:
     logging.info("Attempting to authenticate with Google services...")
     try:
         if not GCP_SERVICE_ACCOUNT_KEY:
             logging.error("CRITICAL: GCP_SA_KEY environment variable not found.")
             return None, None
-            
+
         creds_info = json.loads(GCP_SERVICE_ACCOUNT_KEY)
         scopes = [
             "https://www.googleapis.com/auth/drive",
             "https://www.googleapis.com/auth/spreadsheets",
         ]
         creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
-        
+
         drive_service = build("drive", "v3", credentials=creds)
-        
-        # --- THIS IS THE CORRECTED LINE ---
-        gc = gspread.authorize(creds)
-        
+        gsheets_client = gspread.authorize(creds)
+
         logging.info("SUCCESS: Authentication with Google services complete.")
-        return drive_service, gc
+        return drive_service, gsheets_client
     except Exception as e:
         logging.error(f"CRITICAL: Authentication failed: {e}")
         return None, None
 
-def download_file(drive_service, file_id):
+# =======================
+# Drive helpers
+# =======================
+def iter_folder_files(drive_service, folder_id: str) -> Iterable[Dict[str, str]]:
+    """Yields all media files in a folder, handling pagination."""
+    query = f"'{folder_id}' in parents and trashed = false and (mimeType contains 'audio/' or mimeType contains 'video/')"
+    fields = "nextPageToken, files(id, name, mimeType, parents)"
+    page_token = None
+    while True:
+        resp = drive_service.files().list(q=query, fields=fields, pageToken=page_token).execute()
+        yield from resp.get("files", [])
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+def download_file(drive_service, file_id: str) -> io.BytesIO:
     logging.info(f"Starting download for file ID: {file_id}")
     request = drive_service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
@@ -81,23 +99,36 @@ def download_file(drive_service, file_id):
     logging.info("SUCCESS: File download complete.")
     return fh
 
-def transcribe_audio(file_content, original_filename):
+def move_file_to_processed(drive_service, file_id: str, source_folder_id: str) -> None:
+    logging.info(f"Attempting to move file {file_id} to processed folder...")
+    try:
+        drive_service.files().update(
+            fileId=file_id,
+            addParents=PROCESSED_FOLDER_ID,
+            removeParents=source_folder_id,
+            fields="id, parents"
+        ).execute()
+        logging.info(f"SUCCESS: File {file_id} moved to processed folder.")
+    except Exception as e:
+        logging.error(f"ERROR: Failed to move file {file_id}: {e}")
+
+# =======================
+# Transcription
+# =======================
+def transcribe_audio(file_content: io.BytesIO, original_filename: str) -> Optional[str]:
     logging.info("Starting transcription process...")
     with tempfile.NamedTemporaryFile(suffix=os.path.splitext(original_filename)[1], delete=False) as temp_file:
         temp_file.write(file_content.read())
         temp_file_path = temp_file.name
 
     try:
-        logging.info("Initializing Whisper model (tiny.en)...")
         model = WhisperModel("tiny.en", device="cpu", compute_type="int8")
         
         logging.info(f"Transcribing {temp_file_path}...")
         segments, _ = model.transcribe(temp_file_path, beam_size=5)
-        
-        transcript = " ".join(segment.text for segment in segments)
-        
+        transcript = " ".join(segment.text for segment in segments).strip()
         logging.info(f"SUCCESS: Transcription completed. Transcript length: {len(transcript)} characters.")
-        return transcript.strip()
+        return transcript
     except Exception as e:
         logging.error(f"ERROR: Transcription failed: {e}")
         return None
@@ -105,14 +136,16 @@ def transcribe_audio(file_content, original_filename):
         os.remove(temp_file_path)
         logging.info(f"Cleaned up temporary file: {temp_file_path}")
 
-def analyze_transcript_with_gemini(transcript, owner_name):
+# =======================
+# Gemini Analysis
+# =======================
+def analyze_transcript_with_gemini(transcript: str, owner_name: str) -> Optional[Dict[str, str]]:
     logging.info("Starting analysis with Gemini...")
     if not GEMINI_API_KEY:
         logging.error("CRITICAL: GEMINI_API_KEY environment variable not found.")
         return None
 
     genai.configure(api_key=GEMINI_API_KEY)
-    
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
         
@@ -197,50 +230,40 @@ def analyze_transcript_with_gemini(transcript, owner_name):
             prompt,
             generation_config={"response_mime_type": "application/json"}
         )
-        
-        logging.info("SUCCESS: Analysis with Gemini complete.")
         return json.loads(response.text)
     except Exception as e:
         logging.error(f"ERROR: Gemini API analysis failed: {e}")
         return None
 
-def write_to_google_sheets(gsheets_client, data):
+# =======================
+# Sheets helpers
+# =======================
+DEFAULT_HEADERS = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
+
+def write_to_google_sheets(gsheets_client, data: Dict[str, str]) -> None:
     logging.info("Attempting to write data to Google Sheets...")
     try:
         spreadsheet = gsheets_client.open_by_key(GOOGLE_SHEET_ID)
         worksheet = spreadsheet.get_worksheet(0)
-        
+
         headers = worksheet.row_values(1)
         if not headers:
-            logging.warning("No headers found in the Google Sheet. Writing data keys as headers first.")
-            header_keys = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
-            worksheet.append_row(header_keys, value_input_option="USER_ENTERED")
-            headers = header_keys
+            worksheet.append_row(DEFAULT_HEADERS, value_input_option="USER_ENTERED")
+            headers = DEFAULT_HEADERS
 
         row_to_insert = [data.get(header, "N/A") for header in headers]
-        
         worksheet.append_row(row_to_insert, value_input_option="USER_ENTERED")
         logging.info(f"SUCCESS: Data for '{data.get('Society Name', 'N/A')}' written to Google Sheets.")
     except Exception as e:
         logging.error(f"ERROR: Failed to write to Google Sheets: {e}")
 
-def move_file_to_processed(drive_service, file_id, source_folder_id):
-    logging.info(f"Attempting to move file {file_id} to processed folder...")
-    try:
-        drive_service.files().update(
-            fileId=file_id,
-            addParents=PROCESSED_FOLDER_ID,
-            removeParents=source_folder_id,
-            fields="id, parents"
-        ).execute()
-        logging.info(f"SUCCESS: File {file_id} moved to processed folder.")
-    except Exception as e:
-        logging.error(f"ERROR: Failed to move file {file_id}: {e}")
-
+# =======================
+# Main
+# =======================
 def main():
     logging.info("--- Starting main execution ---")
     if not GOOGLE_SHEET_ID or not PROCESSED_FOLDER_ID:
-        logging.error("CRITICAL: GOOGLE_SHEET_ID or PROCESSED_FOLDER_ID not set in the script.")
+        logging.error("CRITICAL: GOOGLE_SHEET_ID or PROCESSED_FOLDER_ID not set.")
         return
 
     drive_service, gsheets_client = authenticate_google_services()
@@ -252,36 +275,35 @@ def main():
     for member_name, folder_id in TEAM_FOLDERS.items():
         logging.info(f"--- Checking folder for team member: {member_name} (Folder ID: {folder_id}) ---")
         try:
-            query = f"'{folder_id}' in parents and (mimeType contains 'audio/' or mimeType contains 'video/')"
-            logging.info(f"Executing Drive search query: {query}")
-            results = drive_service.files().list(q=query, fields="files(id, name)").execute()
-            files = results.get("files", [])
-            
-            logging.info(f"Found {len(files)} new file(s) for {member_name}.")
-            
+            files = list(iter_folder_files(drive_service, folder_id))
+            logging.info(f"Found {len(files)} media file(s) for {member_name}.")
             if not files:
                 continue
-            
+
             for file in files:
                 file_id, file_name = file["id"], file["name"]
                 logging.info(f"--- Processing file: {file_name} (ID: {file_id}) ---")
                 try:
                     file_content = download_file(drive_service, file_id)
                     transcript = transcribe_audio(file_content, file_name)
-                    
+
                     if transcript:
                         analysis_data = analyze_transcript_with_gemini(transcript, member_name)
                         if analysis_data:
                             write_to_google_sheets(gsheets_client, analysis_data)
                             move_file_to_processed(drive_service, file_id, folder_id)
-                        
-                        time.sleep(20) # Pauses for 20 seconds to help with API rate limits
+                        else:
+                            logging.warning("Gemini did not return data; skipping sheet write & move.")
+                    else:
+                        logging.warning("Transcription failed; skipping sheet write & move.")
                 except Exception as e:
-                    logging.error(f"ERROR processing file {file_name}: {e}")
-        
+                    logging.error(f"ERROR while processing file {file_name}: {e}")
+                finally:
+                    time.sleep(20) # Throttle to be gentle with APIs
+
         except Exception as e:
-            logging.error(f"CRITICAL ERROR while processing {member_name}'s folder: {e}")
-    
+            logging.error(f"CRITICAL ERROR while listing/processing {member_name}'s folder: {e}")
+
     logging.info("--- Main execution finished ---")
 
 if __name__ == "__main__":
