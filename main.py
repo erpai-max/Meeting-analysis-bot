@@ -25,19 +25,19 @@ def get_id_from_url(url):
     return url.split('/')[-1].split('?')[0]
 
 TEAM_FOLDERS = {
-    "Sharath": get_id_from_url("https://drive.google.com/drive/folders/1tclHStXMgSyrJ_hekjg-HBk7AzpJthnk?usp=sharing"),
-    "Tavish": get_id_from_url("https://drive.google.com/drive/folders/12Ieo0pRyDT-FzZzzKSkFd7W9VUeNMrS8?usp=sharing"),
-    "Sripal": get_id_from_url("https://drive.google.com/drive/folders/1Jx_Eh1EwWQXTn5UJ1ipsAHufNSE3_6JW?usp=sharing"),
-    "Musthafa": get_id_from_url("https://drive.google.com/drive/folders/1vT7FoDkhOFrEoJse5NVfcnwvAJEEYkI1?usp=sharing"),
-    "Hemanth": get_id_from_url("https://drive.google.com/drive/folders/1RgBpp16evtvhhOm6agzfLoCpdtVSFTrJ?usp=sharing"),
-    "Luqman": get_id_from_url("https://drive.google.com/drive/folders/1bULuHrwJOLDCy2P966HG-fJeL4NvJX-L?usp=sharing"),
-    "Darshan": get_id_from_url("https://drive.google.com/drive/folders/1BELBndPySeuDSG_Jj49QzdYfMpbwY4SL?usp=sharing"),
-    "Yash": get_id_from_url("https://drive.google.com/drive/folders/1DqQkGB03jo3rEkayyulcb7ZRVCVf1QXo?usp=sharing"),
-    "Aditya": get_id_from_url("https://drive.google.com/drive/folders/1K9ZoKtnYEM0VGvi5IJohy4ZENJMNrVly?usp=sharing"),
-    "Vishal": get_id_from_url("https://drive.google.com/drive/folders/14SlRaEcfOtYBSmFuNMC7A-gTGWdN2e4k?usp=sharing"),
-    "Rahul": get_id_from_url("https://drive.google.com/drive/folders/1FGJopLfEJonGHEd8yb-EVLpIRP8k7R1W?usp=sharing"),
-    "Akshay": get_id_from_url("https://drive.google.com/drive/folders/1ykWhLVloJf6QzVT1fU6xWqgT8TdaYhNe?usp=sharing"),
-    "Saleem": get_id_from_url("https://drive.google.com/drive/folders/15aCudaUyg6vD3y7bwgIz5vMxaghBeNUd?usp=sharing")
+    "Sharath": get_id_from_url(""),
+    "Tavish": get_id_from_url(""),
+    "Sripal": get_id_from_url(""),
+    "Musthafa": get_id_from_url(""),
+    "Hemanth": get_id_from_url("https://drive.google.com/drive/folders/148aNehlAkHFL_gpX73Ko61ftg0XgE_ye?usp=sharing"),
+    "Luqman": get_id_from_url(""),
+    "Darshan": get_id_from_url(""),
+    "Yash": get_id_from_url(""),
+    "Aditya": get_id_from_url(""),
+    "Vishal": get_id_from_url(""),
+    "Rahul": get_id_from_url(""),
+    "Akshay": get_id_from_url(""),
+    "Saleem": get_id_from_url("")
 }
 
 # Set up logging
