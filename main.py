@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import logging
+import time
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -39,28 +40,29 @@ TEAM_FOLDERS = {
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def write_to_google_sheets(gsheets_client, data):
-    logging.info("Attempting to write data to Google Sheets...")
-    try:
-        spreadsheet = gsheets_client.open_by_key(GOOGLE_SHEET_ID)
-        worksheet = spreadsheet.get_worksheet(0)
-        
-        headers = worksheet.row_values(1)
-        # If the sheet is empty, create the headers first
-        if not headers:
-            logging.warning("No headers found in the Google Sheet. Writing data keys as headers first.")
-            # Create a list of all 47 expected keys from your prompt
-            header_keys = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
-            worksheet.append_row(header_keys, value_input_option="USER_ENTERED")
-            headers = header_keys # Use the newly created headers
+# --- FUNCTION DEFINITIONS ---
 
-        # Create the row of values in the correct order based on the headers
-        row_to_insert = [data.get(header, "N/A") for header in headers]
+def authenticate_google_services():
+    logging.info("Attempting to authenticate with Google services...")
+    try:
+        if not GCP_SERVICE_ACCOUNT_KEY:
+            logging.error("CRITICAL: GCP_SA_KEY environment variable not found.")
+            return None, None
+            
+        creds_info = json.loads(GCP_SERVICE_ACCOUNT_KEY)
+        scopes = [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/spreadsheets",
+        ]
+        creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
         
-        worksheet.append_row(row_to_insert, value_input_option="USER_ENTERED")
-        logging.info(f"SUCCESS: Data for '{data.get('Society Name', 'N/A')}' written to Google Sheets.")
+        drive_service = build("drive", "v3", credentials=creds)
+        gc = gspread.Client(auth=creds)
+        
+        logging.info("SUCCESS: Authentication with Google services complete.")
+        return drive_service, gc
     except Exception as e:
-        logging.error(f"ERROR: Failed to write to Google Sheets: {e}")
+        logging.error(f"CRITICAL: Authentication failed: {e}")
         return None, None
 
 def download_file(drive_service, file_id):
@@ -206,15 +208,12 @@ def write_to_google_sheets(gsheets_client, data):
         worksheet = spreadsheet.get_worksheet(0)
         
         headers = worksheet.row_values(1)
-        # If the sheet is empty, create the headers first
         if not headers:
             logging.warning("No headers found in the Google Sheet. Writing data keys as headers first.")
-            # Create a list of all 47 expected keys from your prompt
             header_keys = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
             worksheet.append_row(header_keys, value_input_option="USER_ENTERED")
-            headers = header_keys # Use the newly created headers
+            headers = header_keys
 
-        # Create the row of values in the correct order based on the headers
         row_to_insert = [data.get(header, "N/A") for header in headers]
         
         worksheet.append_row(row_to_insert, value_input_option="USER_ENTERED")
@@ -238,7 +237,6 @@ def move_file_to_processed(drive_service, file_id, source_folder_id):
 def main():
     logging.info("--- Starting main execution ---")
     if GOOGLE_SHEET_ID == "YOUR_GOOGLE_SHEET_ID_HERE" or PROCESSED_FOLDER_ID == "YOUR_PROCESSED_ITEMS_FOLDER_ID_HERE":
-        # This check is now redundant since you've hardcoded the IDs, but it's good practice.
         logging.error("CRITICAL: GOOGLE_SHEET_ID or PROCESSED_FOLDER_ID has not been set in main.py. Exiting.")
         return
 
@@ -273,6 +271,8 @@ def main():
                     if analysis_data:
                         write_to_google_sheets(gsheets_client, analysis_data)
                         move_file_to_processed(drive_service, file_id, folder_id)
+                    
+                    time.sleep(20) # Pauses for 20 seconds to help with API rate limits
         
         except Exception as e:
             logging.error(f"CRITICAL ERROR while processing {member_name}'s folder: {e}")
@@ -281,4 +281,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
