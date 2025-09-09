@@ -27,3 +27,18 @@ jobs:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
+        - name: Notify on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: 'GitHub Action Failed: Meeting Analysis Bot'
+          to: user1@example.com,user2@example.com
+          from: GitHub Actions Bot
+          body: |
+            The Meeting Analysis workflow failed.
+            Repository: ${{ github.repository }}
+            See the run details here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
