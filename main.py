@@ -58,7 +58,7 @@ def authenticate_google_services():
         
         drive_service = build("drive", "v3", credentials=creds)
         
-        # This is the corrected line for gspread authentication
+        # --- THIS IS THE CORRECTED LINE ---
         gc = gspread.authorize(creds)
         
         logging.info("SUCCESS: Authentication with Google services complete.")
