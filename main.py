@@ -57,7 +57,9 @@ def authenticate_google_services():
         creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
         
         drive_service = build("drive", "v3", credentials=creds)
-        gc = gspread.Client(auth=creds)
+        
+        # This is the corrected line for gspread authentication
+        gc = gspread.authorize(creds)
         
         logging.info("SUCCESS: Authentication with Google services complete.")
         return drive_service, gc
@@ -74,7 +76,6 @@ def download_file(drive_service, file_id):
     while not done:
         status, done = downloader.next_chunk()
         if status:
-            # This is the corrected line
             logging.info(f"Download progress: {int(status.progress() * 100)}%")
     fh.seek(0)
     logging.info("SUCCESS: File download complete.")
