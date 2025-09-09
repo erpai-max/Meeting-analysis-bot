@@ -39,27 +39,28 @@ TEAM_FOLDERS = {
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def authenticate_google_services():
-    logging.info("Attempting to authenticate with Google services...")
+def write_to_google_sheets(gsheets_client, data):
+    logging.info("Attempting to write data to Google Sheets...")
     try:
-        if not GCP_SERVICE_ACCOUNT_KEY:
-            logging.error("CRITICAL: GCP_SA_KEY environment variable not found.")
-            return None, None
-            
-        creds_info = json.loads(GCP_SERVICE_ACCOUNT_KEY)
-        scopes = [
-            "https://www.googleapis.com/auth/drive",
-            "https://www.googleapis.com/auth/spreadsheets",
-        ]
-        creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+        spreadsheet = gsheets_client.open_by_key(GOOGLE_SHEET_ID)
+        worksheet = spreadsheet.get_worksheet(0)
         
-        drive_service = build("drive", "v3", credentials=creds)
-        gc = gspread.Client(auth=creds)
+        headers = worksheet.row_values(1)
+        # If the sheet is empty, create the headers first
+        if not headers:
+            logging.warning("No headers found in the Google Sheet. Writing data keys as headers first.")
+            # Create a list of all 47 expected keys from your prompt
+            header_keys = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
+            worksheet.append_row(header_keys, value_input_option="USER_ENTERED")
+            headers = header_keys # Use the newly created headers
+
+        # Create the row of values in the correct order based on the headers
+        row_to_insert = [data.get(header, "N/A") for header in headers]
         
-        logging.info("SUCCESS: Authentication with Google services complete.")
-        return drive_service, gc
+        worksheet.append_row(row_to_insert, value_input_option="USER_ENTERED")
+        logging.info(f"SUCCESS: Data for '{data.get('Society Name', 'N/A')}' written to Google Sheets.")
     except Exception as e:
-        logging.error(f"CRITICAL: Authentication failed: {e}")
+        logging.error(f"ERROR: Failed to write to Google Sheets: {e}")
         return None, None
 
 def download_file(drive_service, file_id):
