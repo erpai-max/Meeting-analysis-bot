@@ -1,0 +1,5 @@
+faster-whisper
+google-api-python-client
+gspread
+google-generativeai
+google-auth-oauthlib
