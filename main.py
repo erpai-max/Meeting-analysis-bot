@@ -4,6 +4,7 @@ import json
 import tempfile
 import logging
 import time
+import re
 from typing import Dict, Tuple, Optional, Iterable
 
 from google.oauth2 import service_account
@@ -21,7 +22,7 @@ from faster_whisper import WhisperModel
 GCP_SERVICE_ACCOUNT_KEY = os.environ.get("GCP_SA_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-GOOGLE_SHEET_ID = "1KIP8-5CVOb-DWwhXAEubjZJBbEo8vuJqggy8XPt_LLQ"
+GOOGLE_SHEET_ID = "12vuVG0jTs5GUFaywj3piz6zk44X92JeB"
 PROCESSED_FOLDER_ID = "1fI7QAr1MwJlh4FTJGezb5LTXGDqMpmXT"
 
 def get_id_from_url(url: str) -> str:
@@ -37,7 +38,29 @@ TEAM_FOLDERS = {
     "Vishal": get_id_from_url("https://drive.google.com/drive/folders/1ZFE5sAVMOlJcHC5r3LEVZzbEnZzOvY-G?usp=sharing"),
     "Rahul": get_id_from_url("https://drive.google.com/drive/folders/1kxThyuSLuMUmM3GFF4H7PcVx8yUzasix?usp=sharing"),
     "Akshay": get_id_from_url("https://drive.google.com/drive/folders/13gXYRgpi4xzhLMWppa8ZI2Ljr_wZHAQF?usp=sharing"),
+    "Mohmed luqman": get_id_from_url("https://drive.google.com/drive/folders/1JC6bKSXB-kDjR-N82iss8PwgdH6pTckS?usp=sharing"),
+    "Saleem": get_id_from_url("https://drive.google.com/drive/folders/1h4FTi3qbIbAxhWFHg1vqgK9ptB7Js3vt?usp=sharing"),
 }
+
+# Updated mapping to include Email ID
+MANAGER_MAP = {
+    "Sripal": {"Manager": "Saleem", "Team": "Chennai", "Email": "sripal.r@nobroker.in"},
+    "Sharath": {"Manager": "Saleem", "Team": "Bangalore", "Email": "sharath.k@nobroker.in"},
+    "Tavish": {"Manager": "Saleem", "Team": "Bangalore", "Email": "tavish.thammaiah@nobroker.in"},
+    "Aditya": {"Manager": "Dipesh", "Team": "Pune", "Email": "aditya.singh2@nobroker.in"},
+    "Akshay": {"Manager": "Dipesh", "Team": "Pune", "Email": "akshay.anil@nobroker.in"},
+    "Rahul": {"Manager": "Dipesh", "Team": "Pune", "Email": "rahul.s@nobroker.in"},
+    "Hemanth": {"Manager": "Saleem", "Team": "Hyderabad", "Email": "jinukala.hemanth@nobroker.in"},
+    "Mohmed luqman": {"Manager": "Saleem", "Team": "Hyderabad", "Email": "mohmed.luqman@nobroker.in"},
+    "Pramod": {"Manager": "Saleem", "Team": "Hyderabad", "Email": "pramod.ambadas@nobroker.in"},
+    "Vishal": {"Manager": "Dipesh", "Team": "Navi Mumbai", "Email": "vishal.shinde1@nobroker.in"},
+    "Darshan": {"Manager": "Dipesh", "Team": "Greater Mumbai", "Email": "darshan.soni@nobroker.in"},
+    "Mustafa": {"Manager": "Dipesh", "Team": "Emerging City", "Email": "mustafa.hatimbhai@nobroker.in"},
+    "Yash": {"Manager": "Dipesh", "Team": "Greater Mumbai", "Email": "yash.anand@nobroker.in"},
+    "Sourav": {"Manager": "Dipesh", "Team": "Emerging City", "Email": "sourav.chhangani@nobroker.in"},
+}
+
+DEFAULT_HEADERS = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
 
 # =======================
 # Logging
@@ -45,38 +68,60 @@ TEAM_FOLDERS = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # =======================
-# Auth
+# Helper Functions
 # =======================
+def enrich_data_from_context(analysis_data: Dict, member_name: str, file_name: str) -> Dict:
+    """Overrides 'N/A' values in analysis_data with info from context."""
+    logging.info("Enriching data with context from filename and folder structure...")
+
+    analysis_data['Owner'] = member_name
+    manager_info = MANAGER_MAP.get(member_name, {})
+    analysis_data['Manager'] = manager_info.get('Manager', 'N/A')
+    analysis_data['Team'] = manager_info.get('Team', 'N/A')
+    # This line adds the email ID
+    analysis_data['Email Id'] = manager_info.get('Email', 'N/A')
+
+    if str(analysis_data.get('Date', 'N/A')).strip().upper() == 'N/A':
+        date_match = re.search(r'(\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4})', file_name)
+        if date_match:
+            analysis_data['Date'] = date_match.group(0).replace('-', '/')
+
+    if str(analysis_data.get('Visit Type', 'N/A')).strip().upper() == 'N/A':
+        fn_lower = file_name.lower()
+        if 'asp demo' in fn_lower:
+            analysis_data['Visit Type'] = 'ASP Demo'
+        elif 'erp demo' in fn_lower:
+            analysis_data['Visit Type'] = 'ERP Demo'
+        elif 'training' in fn_lower:
+            analysis_data['Visit Type'] = 'Training'
+        elif 'follow up' in fn_lower:
+            analysis_data['Visit Type'] = 'Follow Up'
+
+    if str(analysis_data.get('Society Name', 'N/A')).strip().upper() == 'N/A':
+        name_part = re.split(r'[_|\- ]+(ASP|ERP|DEMO|TRAINING|FOLLOW UP|\d{2}[-/]\d{2})', file_name, flags=re.IGNORECASE)
+        if name_part and name_part[0]:
+            analysis_data['Society Name'] = name_part[0].strip().replace('_', ' ').replace('.', ' ')
+
+    return analysis_data
+
 def authenticate_google_services() -> Tuple[Optional[object], Optional[gspread.Client]]:
     logging.info("Attempting to authenticate with Google services...")
     try:
         if not GCP_SERVICE_ACCOUNT_KEY:
             logging.error("CRITICAL: GCP_SA_KEY environment variable not found.")
             return None, None
-
         creds_info = json.loads(GCP_SERVICE_ACCOUNT_KEY)
-        scopes = [
-            "https://www.googleapis.com/auth/drive",
-            "https://www.googleapis.com/auth/spreadsheets",
-        ]
+        scopes = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
         creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
-
         drive_service = build("drive", "v3", credentials=creds)
-        
-        # --- THIS IS THE CORRECTED LINE ---
         gsheets_client = gspread.authorize(creds)
-
         logging.info("SUCCESS: Authentication with Google services complete.")
         return drive_service, gsheets_client
     except Exception as e:
         logging.error(f"CRITICAL: Authentication failed: {e}")
         return None, None
 
-# =======================
-# Drive helpers
-# =======================
 def iter_folder_files(drive_service, folder_id: str) -> Iterable[Dict[str, str]]:
-    """Yields all media files in a folder, handling pagination."""
     query = f"'{folder_id}' in parents and trashed = false and (mimeType contains 'audio/' or mimeType contains 'video/')"
     fields = "nextPageToken, files(id, name, mimeType, parents)"
     page_token = None
@@ -114,18 +159,13 @@ def move_file_to_processed(drive_service, file_id: str, source_folder_id: str) -
     except Exception as e:
         logging.error(f"ERROR: Failed to move file {file_id}: {e}")
 
-# =======================
-# Transcription
-# =======================
 def transcribe_audio(file_content: io.BytesIO, original_filename: str) -> Optional[str]:
     logging.info("Starting transcription process...")
     with tempfile.NamedTemporaryFile(suffix=os.path.splitext(original_filename)[1], delete=False) as temp_file:
         temp_file.write(file_content.read())
         temp_file_path = temp_file.name
-
     try:
         model = WhisperModel("tiny.en", device="cpu", compute_type="int8")
-        
         logging.info(f"Transcribing {temp_file_path}...")
         segments, _ = model.transcribe(temp_file_path, beam_size=5)
         transcript = " ".join(segment.text for segment in segments).strip()
@@ -138,15 +178,11 @@ def transcribe_audio(file_content: io.BytesIO, original_filename: str) -> Option
         os.remove(temp_file_path)
         logging.info(f"Cleaned up temporary file: {temp_file_path}")
 
-# =======================
-# Gemini Analysis
-# =======================
 def analyze_transcript_with_gemini(transcript: str, owner_name: str) -> Optional[Dict[str, str]]:
     logging.info("Starting analysis with Gemini...")
     if not GEMINI_API_KEY:
         logging.error("CRITICAL: GEMINI_API_KEY environment variable not found.")
         return None
-
     genai.configure(api_key=GEMINI_API_KEY)
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
@@ -228,19 +264,12 @@ def analyze_transcript_with_gemini(transcript: str, owner_name: str) -> Optional
         }}
         """
         
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
-        )
+        response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+        logging.info("SUCCESS: Analysis with Gemini complete.")
         return json.loads(response.text)
     except Exception as e:
         logging.error(f"ERROR: Gemini API analysis failed: {e}")
         return None
-
-# =======================
-# Sheets helpers
-# =======================
-DEFAULT_HEADERS = ["Date", "POC Name", "Society Name", "Visit Type", "Meeting Type", "Amount Value", "Months", "Deal Status", "Vendor Leads", "Society Leads", "Opening Pitch Score", "Product Pitch Score", "Cross-Sell / Opportunity Handling", "Closing Effectiveness", "Negotiation Strength", "Overall Sentiment", "Total Score", "% Score", "Risks / Unresolved Issues", "Improvements Needed", "Owner", "Email Id", "Kibana ID", "Manager", "Product Pitch", "Team", "Media Link", "Doc Link", "Suggestions & Missed Topics", "Pre-meeting brief", "Meeting duration (min)", "Rebuttal Handling", "Rapport Building", "Improvement Areas", "Product Knowledge Displayed", "Call Effectiveness and Control", "Next Step Clarity and Commitment", "Missed Opportunities", "Key Discussion Points", "Key Questions", "Competition Discussion", "Action items", "Positive Factors", "Negative Factors", "Customer Needs", "Overall Client Sentiment", "Feature Checklist Coverage"]
 
 def write_to_google_sheets(gsheets_client, data: Dict[str, str]) -> None:
     logging.info("Attempting to write data to Google Sheets...")
@@ -292,7 +321,8 @@ def main():
                     if transcript:
                         analysis_data = analyze_transcript_with_gemini(transcript, member_name)
                         if analysis_data:
-                            write_to_google_sheets(gsheets_client, analysis_data)
+                            enriched_data = enrich_data_from_context(analysis_data, member_name, file_name)
+                            write_to_google_sheets(gsheets_client, enriched_data)
                             move_file_to_processed(drive_service, file_id, folder_id)
                         else:
                             logging.warning("Gemini did not return data; skipping sheet write & move.")
@@ -301,7 +331,7 @@ def main():
                 except Exception as e:
                     logging.error(f"ERROR while processing file {file_name}: {e}")
                 finally:
-                    time.sleep(20) # Throttle to be gentle with APIs
+                    time.sleep(20)
 
         except Exception as e:
             logging.error(f"CRITICAL ERROR while listing/processing {member_name}'s folder: {e}")
