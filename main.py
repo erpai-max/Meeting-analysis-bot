@@ -110,11 +110,19 @@ def authenticate_google_services() -> Tuple[Optional[object], Optional[gspread.C
         if not GCP_SERVICE_ACCOUNT_KEY:
             logging.error("CRITICAL: GCP_SA_KEY environment variable not found.")
             return None, None
+
         creds_info = json.loads(GCP_SERVICE_ACCOUNT_KEY)
-        scopes = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
+        scopes = [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/spreadsheets",
+        ]
         creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+
         drive_service = build("drive", "v3", credentials=creds)
+        
+        # --- THIS IS THE CORRECTED LINE ---
         gsheets_client = gspread.authorize(creds)
+
         logging.info("SUCCESS: Authentication with Google services complete.")
         return drive_service, gsheets_client
     except Exception as e:
