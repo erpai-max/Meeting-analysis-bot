@@ -22,7 +22,7 @@ from faster_whisper import WhisperModel
 GCP_SERVICE_ACCOUNT_KEY = os.environ.get("GCP_SA_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-GOOGLE_SHEET_ID = "12vuVG0jTs5GUFaywj3piz6zk44X92JeB"
+GOOGLE_SHEET_ID = "1KIP8-5CVOb-DWwhXAEubjZJBbEo8vuJqggy8XPt_LLQ"
 PROCESSED_FOLDER_ID = "1fI7QAr1MwJlh4FTJGezb5LTXGDqMpmXT"
 
 def get_id_from_url(url: str) -> str:
@@ -120,7 +120,7 @@ def authenticate_google_services() -> Tuple[Optional[object], Optional[gspread.C
 
         drive_service = build("drive", "v3", credentials=creds)
         
-        # --- THIS IS THE CORRECTED LINE ---
+        # This is the corrected line that fixes the [400] error
         gsheets_client = gspread.authorize(creds)
 
         logging.info("SUCCESS: Authentication with Google services complete.")
