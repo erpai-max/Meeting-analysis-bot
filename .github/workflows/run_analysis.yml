@@ -27,7 +27,8 @@ jobs:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
-        - name: Notify on failure
+
+      - name: Notify on failure
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
